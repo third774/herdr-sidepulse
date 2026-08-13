@@ -75,7 +75,7 @@ future error status. The plugin does not treat `unknown` as an error.
 
 ## Binding A Key
 
-Bind a key to a refresh in your Herdr config, usually
+Bind keys for refresh and display toggle in your Herdr config, usually
 `~/.config/herdr/config.toml`:
 
 ```toml
@@ -84,6 +84,12 @@ key = "prefix+s"
 type = "plugin_action"
 command = "third774.sidepulse.refresh"
 description = "refresh SidePulse"
+
+[[keys.command]]
+key = "prefix+shift+s"
+type = "plugin_action"
+command = "third774.sidepulse.toggle"
+description = "toggle SidePulse"
 ```
 
 Reload the config after editing it:
@@ -92,9 +98,9 @@ Reload the config after editing it:
 herdr server reload-config
 ```
 
-The refresh action is normally enough. Bind
-`third774.sidepulse.toggle` instead when you want a key to silence or restore
-SidePulse. Do not bind the watch action unless you want a long-running command.
+The refresh action is normally enough. The toggle binding silences or restores
+SidePulse. Do not bind `third774.sidepulse.watch` unless you want a long-running
+command.
 
 ## Device Discovery
 

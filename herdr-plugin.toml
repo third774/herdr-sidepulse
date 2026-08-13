@@ -1,0 +1,25 @@
+id = "third774.sidepulse"
+name = "SidePulse"
+version = "0.1.0"
+min_herdr_version = "0.7.0"
+description = "Show aggregate Herdr agent status on SidePulse devices"
+platforms = ["linux", "macos", "windows"]
+
+[[startup]]
+command = ["node", "index.mjs", "refresh"]
+
+[[actions]]
+id = "refresh"
+title = "Refresh SidePulse"
+contexts = ["global"]
+command = ["node", "index.mjs", "refresh"]
+
+[[actions]]
+id = "watch"
+title = "Watch SidePulse"
+contexts = ["global"]
+command = ["node", "index.mjs", "watch"]
+
+[[events]]
+on = "pane.agent_status_changed"
+command = ["node", "index.mjs", "refresh"]

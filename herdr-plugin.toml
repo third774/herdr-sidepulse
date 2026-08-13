@@ -20,6 +20,12 @@ title = "Watch SidePulse"
 contexts = ["global"]
 command = ["node", "index.mjs", "watch"]
 
+[[actions]]
+id = "toggle"
+title = "Toggle SidePulse"
+contexts = ["global"]
+command = ["node", "index.mjs", "toggle"]
+
 [[events]]
 on = "pane.agent_status_changed"
 command = ["node", "index.mjs", "refresh"]

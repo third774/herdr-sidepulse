@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import test from "node:test";
 
 import {
@@ -10,6 +13,9 @@ import {
   renderProgram,
   selectDisplay,
 } from "../src/sidepulse.mjs";
+
+const runFile = promisify(execFile);
+const pluginRoot = fileURLToPath(new URL("..", import.meta.url));
 
 test("blocked agents take priority over working and completed agents", () => {
   const result = selectDisplay(
@@ -93,4 +99,27 @@ test("Herdr agent-list output accepts only an agents result", () => {
     [],
   );
   assert.throws(() => parseAgentList('{"result":{"type":"workspace_list"}}'));
+});
+
+test("toggle turns confirmed SidePulse devices off", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "herdr-sidepulse-toggle-"));
+  const configDirectory = join(root, "config");
+  const stateDirectory = join(root, "state");
+  const device = join(root, "SidePulseDot");
+  await mkdir(configDirectory);
+  await mkdir(stateDirectory);
+  await mkdir(device);
+  await writeFile(join(configDirectory, "devices.json"), JSON.stringify({ devicePaths: [device] }));
+  await writeFile(join(device, "LEDS.LED"), "#00c8dd\n");
+  t.after(async () => rm(root, { force: true, recursive: true }));
+
+  await runFile(process.execPath, [join(pluginRoot, "index.mjs"), "toggle"], {
+    env: {
+      ...process.env,
+      HERDR_PLUGIN_CONFIG_DIR: configDirectory,
+      HERDR_PLUGIN_STATE_DIR: stateDirectory,
+    },
+  });
+
+  assert.equal(await readFile(join(device, "LEDS.LED"), "utf8"), "off");
 });

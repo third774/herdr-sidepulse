@@ -93,12 +93,16 @@ async function herdrAgentList() {
   return parseAgentList(result);
 }
 
+function programForDisplay(display, device) {
+  return display === "off" ? "off" : renderProgram(display, device.ledCount);
+}
+
 function renderedSignature(display, devices) {
   return JSON.stringify(
     devices.map((device) => ({
       fingerprint: device.fingerprint,
       path: device.path,
-      program: renderProgram(display, device.ledCount),
+      program: programForDisplay(display, device),
     })),
   );
 }
@@ -108,7 +112,7 @@ async function writePrograms(display, devices) {
     devices.map(async (device) => {
       const programPath = join(device.path, "LEDS.LED");
       try {
-        await writeFile(programPath, renderProgram(display, device.ledCount), "utf8");
+        await writeFile(programPath, programForDisplay(display, device), "utf8");
         return true;
       } catch (error) {
         log(`could not write ${programPath}: ${String(error)}`);
@@ -160,14 +164,33 @@ async function withStateLock(operation) {
 
 async function refresh({ keepalive = false, followCompletion = true } = {}) {
   const shouldFollowCompletion = await withStateLock(async () => {
-    const [configuredPaths, mountedPaths, agents] = await Promise.all([
+    const [configuredPaths, mountedPaths] = await Promise.all([
       configuredDevicePaths(),
       mountedDevicePaths(),
-      herdrAgentList(),
     ]);
     const devices = await discoverDevices([...configuredPaths, ...mountedPaths]);
     const path = statePath();
     const state = await readState(path);
+
+    if (state.enabled === false) {
+      const signature = renderedSignature("off", devices);
+      if (state.renderedSignature !== signature && devices.length > 0) {
+        const allWritten = await writePrograms("off", devices);
+        if (allWritten) {
+          state.renderedSignature = signature;
+        } else {
+          delete state.renderedSignature;
+        }
+      }
+      if (devices.length === 0) {
+        state.renderedSignature = signature;
+      }
+      state.doneSequences = {};
+      await writeState(path, state);
+      return false;
+    }
+
+    const agents = await herdrAgentList();
     const decision = selectDisplay(agents, state.doneSequences);
     const signature = renderedSignature(decision.display, devices);
     const shouldWrite = state.renderedSignature !== signature;
@@ -200,6 +223,26 @@ async function refresh({ keepalive = false, followCompletion = true } = {}) {
   }
 }
 
+async function toggle() {
+  const isEnabled = await withStateLock(async () => {
+    const path = statePath();
+    const state = await readState(path);
+    const nextEnabled = state.enabled === false;
+    state.enabled = nextEnabled;
+    state.doneSequences = {};
+    delete state.renderedSignature;
+    await writeState(path, state);
+    return nextEnabled;
+  });
+
+  if (isEnabled === undefined) {
+    log("another SidePulse command is already running");
+    return;
+  }
+  await refresh();
+  log(`SidePulse ${isEnabled ? "enabled" : "disabled"}`);
+}
+
 async function watch() {
   let lastKeepalive = 0;
   while (true) {
@@ -224,7 +267,12 @@ if (command === "refresh") {
     log(String(error));
     process.exitCode = 1;
   });
+} else if (command === "toggle") {
+  toggle().catch((error) => {
+    log(String(error));
+    process.exitCode = 1;
+  });
 } else {
-  process.stderr.write("usage: node index.mjs [refresh|watch]\n");
+  process.stderr.write("usage: node index.mjs [refresh|watch|toggle]\n");
   process.exitCode = 2;
 }

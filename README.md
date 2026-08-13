@@ -45,6 +45,7 @@ The plugin actions are global:
 | --- | --- | --- |
 | Refresh SidePulse | `third774.sidepulse.refresh` | Detect connected devices and write the current agent state. |
 | Watch SidePulse | `third774.sidepulse.watch` | Poll for device changes and send the Pro keepalive every minute. |
+| Toggle SidePulse | `third774.sidepulse.toggle` | Toggle display output on or off. |
 
 Run the watch action when you connect a device after Herdr starts, or when a
 macOS SidePulse Pro stays connected for more than a few minutes. Herdr startup
@@ -52,6 +53,11 @@ hooks are one-shot, so the plugin does not start this polling action by itself.
 
 No SidePulse device is required for normal Herdr use. A refresh with no
 confirmed device exits cleanly and retries on the next refresh or watch cycle.
+
+Toggle SidePulse leaves the plugin installed and its event hook active. When
+you toggle it off, the plugin writes `off` to every confirmed device and future
+event refreshes keep newly found devices off. Run Toggle SidePulse again to
+enable output and immediately display the current agent state.
 
 ## Statuses
 
@@ -86,8 +92,9 @@ Reload the config after editing it:
 herdr server reload-config
 ```
 
-The refresh action is normally enough. Do not bind the watch action unless you
-want a long-running command.
+The refresh action is normally enough. Bind
+`third774.sidepulse.toggle` instead when you want a key to silence or restore
+SidePulse. Do not bind the watch action unless you want a long-running command.
 
 ## Device Discovery
 
@@ -162,5 +169,8 @@ is available as `node` on your `PATH`.
 If no device is found, verify that its mounted directory already contains
 `LEDS.LED`, then run Refresh SidePulse or Watch SidePulse. Add the mount path to
 `devices.json` when automatic discovery does not cover the machine.
+
+If the device stays dark, run Toggle SidePulse once to restore display output,
+then run Refresh SidePulse.
 
 See [REQUIREMENTS.md](REQUIREMENTS.md) for the full behavior contract.

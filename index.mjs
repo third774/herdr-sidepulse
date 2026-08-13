@@ -14,6 +14,7 @@ import {
 const KEEPALIVE_INTERVAL_MS = 60_000;
 const COMPLETION_DURATION_MS = 1_200;
 const WATCH_INTERVAL_MS = 2_000;
+const LOCK_RETRY_INTERVAL_MS = 25;
 
 function log(message) {
   process.stderr.write(`[herdr-sidepulse] ${message}\n`);
@@ -141,20 +142,44 @@ async function refreshKeepalives(devices) {
   );
 }
 
+async function lockOwnerExited(lockPath) {
+  try {
+    const ownerPid = Number.parseInt((await readFile(lockPath, "utf8")).trim(), 10);
+    if (!Number.isSafeInteger(ownerPid) || ownerPid < 1) {
+      return false;
+    }
+    try {
+      process.kill(ownerPid, 0);
+      return false;
+    } catch (error) {
+      return error.code === "ESRCH";
+    }
+  } catch {
+    return false;
+  }
+}
+
 async function withStateLock(operation) {
   const lockPath = `${statePath()}.lock`;
   await mkdir(dirname(lockPath), { recursive: true });
   let lock;
-  try {
-    lock = await open(lockPath, "wx");
-  } catch (error) {
-    if (error.code === "EEXIST") {
-      return;
+  while (lock === undefined) {
+    try {
+      lock = await open(lockPath, "wx");
+    } catch (error) {
+      if (error.code !== "EEXIST") {
+        throw error;
+      }
+      if (await lockOwnerExited(lockPath)) {
+        await unlink(lockPath).catch(() => {});
+        continue;
+      }
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, LOCK_RETRY_INTERVAL_MS));
     }
-    throw error;
   }
 
   try {
+    await lock.writeFile(`${process.pid}\n`, "utf8");
     return await operation();
   } finally {
     await lock.close();

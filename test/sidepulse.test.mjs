@@ -17,6 +17,18 @@ import {
 const runFile = promisify(execFile);
 const pluginRoot = fileURLToPath(new URL("..", import.meta.url));
 
+async function waitForFile(path) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    try {
+      await readFile(path);
+      return;
+    } catch {
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
+    }
+  }
+  throw new Error(`Timed out waiting for ${path}`);
+}
+
 test("blocked agents take priority over working and completed agents", () => {
   const result = selectDisplay(
     [
@@ -122,4 +134,57 @@ test("toggle turns confirmed SidePulse devices off", async (t) => {
   });
 
   assert.equal(await readFile(join(device, "LEDS.LED"), "utf8"), "off");
+});
+
+test("refresh recovers a stale lock and renders a newer queued state", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "herdr-sidepulse-refresh-"));
+  const configDirectory = join(root, "config");
+  const stateDirectory = join(root, "state");
+  const device = join(root, "SidePulseDot");
+  const fakeHerdr = join(root, "agent");
+  const startedPath = join(root, "first-agent-list-started");
+  await mkdir(configDirectory);
+  await mkdir(stateDirectory);
+  await mkdir(device);
+  await writeFile(join(stateDirectory, "herdr-sidepulse-state.json.lock"), "999999999\n");
+  await writeFile(join(configDirectory, "devices.json"), JSON.stringify({ devicePaths: [device] }));
+  await writeFile(join(device, "LEDS.LED"), "off\n");
+  await writeFile(
+    fakeHerdr,
+    `const { existsSync, writeFileSync } = require("node:fs");
+
+const startedPath = process.env.SIDEPULSE_TEST_STARTED_PATH;
+if (!existsSync(startedPath)) {
+  writeFileSync(startedPath, "");
+  setTimeout(() => {
+    process.stdout.write('{"result":{"type":"agent_list","agents":[{"terminal_id":"blocked","agent_status":"blocked","state_change_seq":1}]}}');
+  }, 150);
+} else {
+  process.stdout.write('{"result":{"type":"agent_list","agents":[{"terminal_id":"working","agent_status":"working","state_change_seq":2}]}}');
+}
+`,
+    "utf8",
+  );
+  t.after(async () => rm(root, { force: true, recursive: true }));
+
+  const environment = {
+    ...process.env,
+    HERDR_BIN_PATH: process.execPath,
+    HERDR_PLUGIN_CONFIG_DIR: configDirectory,
+    HERDR_PLUGIN_STATE_DIR: stateDirectory,
+    SIDEPULSE_TEST_STARTED_PATH: startedPath,
+  };
+  const firstRefresh = runFile(process.execPath, [join(pluginRoot, "index.mjs"), "refresh"], {
+    cwd: root,
+    env: environment,
+  });
+  await waitForFile(startedPath);
+  const secondRefresh = runFile(process.execPath, [join(pluginRoot, "index.mjs"), "refresh"], {
+    cwd: root,
+    env: environment,
+  });
+
+  await Promise.all([firstRefresh, secondRefresh]);
+
+  assert.match(await readFile(join(device, "LEDS.LED"), "utf8"), /0:#00c8dd/);
 });

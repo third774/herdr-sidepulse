@@ -100,8 +100,29 @@ test("device discovery requires an existing LEDS.LED file", async (t) => {
   const devices = await discoverDevices([confirmed, rejected]);
 
   assert.deepEqual(
-    devices.map((device) => ({ path: device.path, ledCount: device.ledCount })),
-    [{ path: confirmed, ledCount: 2 }],
+    devices.map((device) => ({ path: device.path, model: device.model, ledCount: device.ledCount })),
+    [{ path: confirmed, model: "dot", ledCount: 2 }],
+  );
+});
+
+test("a confirmed SidePulse Pro is distinguished from unknown LED devices", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "herdr-sidepulse-"));
+  const pro = join(root, "SidePulsePro");
+  const unknown = join(root, "other-led-device");
+  await mkdir(pro);
+  await mkdir(unknown);
+  await writeFile(join(pro, "LEDS.LED"), "off\n");
+  await writeFile(join(unknown, "LEDS.LED"), "off\n");
+  t.after(async () => rm(root, { force: true, recursive: true }));
+
+  const devices = await discoverDevices([pro, unknown]);
+
+  assert.deepEqual(
+    devices.map((device) => ({ path: device.path, model: device.model })),
+    [
+      { path: pro, model: "pro" },
+      { path: unknown, model: "unknown" },
+    ],
   );
 });
 

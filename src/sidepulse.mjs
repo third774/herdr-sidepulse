@@ -92,8 +92,15 @@ export function renderProgram(display, ledCount) {
   }
 }
 
-function ledCountForPath(devicePath) {
-  return basename(devicePath).toLowerCase() === "sidepulsedot" ? 2 : 8;
+function deviceModelForPath(devicePath) {
+  const volumeName = basename(devicePath).toLowerCase();
+  if (volumeName === "sidepulsedot") {
+    return "dot";
+  }
+  if (volumeName === "sidepulsepro") {
+    return "pro";
+  }
+  return "unknown";
 }
 
 export async function discoverDevices(candidatePaths) {
@@ -105,9 +112,11 @@ export async function discoverDevices(candidatePaths) {
     try {
       const program = await stat(programPath);
       if (program.isFile()) {
+        const model = deviceModelForPath(devicePath);
         devices.push({
           path: devicePath,
-          ledCount: ledCountForPath(devicePath),
+          model,
+          ledCount: model === "dot" ? 2 : 8,
           fingerprint: `${program.dev}:${program.ino}`,
         });
       }

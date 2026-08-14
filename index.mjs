@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
-import { mkdir, open, readFile, rename, unlink, utimes, writeFile } from "node:fs/promises";
+import { access, mkdir, open, readFile, rename, unlink, utimes, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 
 import {
   discoverDevices,
@@ -15,6 +15,7 @@ const KEEPALIVE_INTERVAL_MS = 60_000;
 const COMPLETION_DURATION_MS = 1_200;
 const WATCH_INTERVAL_MS = 2_000;
 const LOCK_RETRY_INTERVAL_MS = 25;
+const SD_EJECT_GUARD_LABEL = "io.sidepulse.sdejectguard";
 
 function log(message) {
   process.stderr.write(`[herdr-sidepulse] ${message}\n`);
@@ -142,6 +143,39 @@ async function refreshKeepalives(devices) {
   );
 }
 
+async function pathExists(path) {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function warnIfProEjectGuardIsMissing(devices, state) {
+  if (process.platform !== "darwin" || !devices.some((device) => device.model === "pro")) {
+    delete state.proEjectGuard;
+    return;
+  }
+
+  const guardPaths = [
+    join(homedir(), "Library", "LaunchAgents", `${SD_EJECT_GUARD_LABEL}.plist`),
+    join("/Library", "LaunchDaemons", `${SD_EJECT_GUARD_LABEL}.plist`),
+  ];
+  const guardInstalled = (await Promise.all(guardPaths.map(pathExists))).some(Boolean);
+  if (guardInstalled) {
+    delete state.proEjectGuard;
+    return;
+  }
+
+  if (state.proEjectGuard !== "missing") {
+    log(
+      "SidePulse Pro Eject Prevention was not detected. macOS can logically eject the Pro after hibernation or a locked-screen wake. Install the upstream guard, for example: sudo sidepulse sdejectguard start --scope system",
+    );
+    state.proEjectGuard = "missing";
+  }
+}
+
 async function lockOwnerExited(lockPath) {
   try {
     const ownerPid = Number.parseInt((await readFile(lockPath, "utf8")).trim(), 10);
@@ -196,6 +230,7 @@ async function refresh({ keepalive = false, followCompletion = true } = {}) {
     const devices = await discoverDevices([...configuredPaths, ...mountedPaths]);
     const path = statePath();
     const state = await readState(path);
+    await warnIfProEjectGuardIsMissing(devices, state);
 
     if (state.enabled === false) {
       const signature = renderedSignature("off", devices);

@@ -14,6 +14,16 @@ another, and SidePulse shows the highest-priority state across both.
   [SidePulse project](https://github.com/inteliwear/sidepulse) for hardware
   setup.
 
+On macOS, SidePulse Pro users must also install SidePulse Pro Eject Prevention
+from the upstream SidePulse package. It prevents macOS from logically ejecting
+the built-in SD reader after hibernation or a locked-screen wake. The plugin's
+`keepalive` refresh only prevents the separate SD-reader idle power timeout.
+The guard is a system service, so the plugin does not install it. Follow the
+[upstream setup instructions](https://github.com/inteliwear/sidepulse#sidepulse-1)
+to install the guard. When a confirmed volume is named `SidePulsePro`, the
+plugin warns once if it cannot detect the upstream guard. SidePulse Dot and
+unrecognized LED volumes do not show this warning.
+
 ## Install
 
 Install from GitHub:
